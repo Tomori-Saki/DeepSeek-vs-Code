@@ -1,0 +1,16 @@
+本目录中的 8 个 WAV 均为本项目原创程序生成的 PCM 音效，不依赖第三方素材许可证：
+
+- player-hurt.wav
+- shoot.wav
+- enemy-hurt.wav
+- enemy-death.wav
+- exit-unlock.wav
+- player-death.wav
+- level-clear.wav
+- warning-shot.wav
+
+文件可离线分发，游戏运行时不请求外链。未来如果用 Kenney 或 OpenGameArt 的替换素材覆盖这些文件，必须同步更新本清单，记录实际文件名、作者、来源 URL 与许可证。
+
+候选来源：
+- Kenney Interface Sounds: https://kenney.nl/assets/interface-sounds (CC0)
+- OpenGameArt UI Sound effects pack: https://opengameart.org/content/ui-sound-effects-pack (CC-BY 3.0，作者 ViRiX / soundcloud.com/virix)

@@ -1,0 +1,9 @@
+qwen_api_key.txt
+generated/qwen/
+generated/qwen_archive/
+tmp/
+__pycache__/
+node_modules/
+dist/
+.vite/
+*.log
