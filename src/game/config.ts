@@ -10,6 +10,7 @@ export interface PlatformRect {
 /**
  * 固定步长模拟参数。时间用帧计数（60Hz），不要改成动画回调。
  * 人物脚底中心为 position。
+ * 敌人/Boss 的战斗数值统一在 EnemyState.KIND 表，别在这里另抄一份。
  */
 export const SIM = {
   fixedHz: 60,
@@ -29,17 +30,6 @@ export const SIM = {
   enemyWidth: 40,
   enemyHeight: 72,
   playerMaxHealth: 100,
-  enemyMaxHealth: 90,
-  playerDamage: 30,
-  enemyDamage: 20,
-  attackStartupFrames: 5,
-  attackActiveFrames: 4,
-  attackRecoveryFrames: 12,
-  enemyAttackStartupFrames: 18,
-  enemyAttackActiveFrames: 6,
-  enemyAttackRecoveryFrames: 22,
-  enemyAttackRange: 86,
-  enemyAttackCooldownFrames: 96,
   hurtStunFrames: 13,
   invulnFrames: 21,
   hitStopFrames: 4,
@@ -49,8 +39,6 @@ export const SIM = {
   flashFrames: 6,
   playerSpawnX: 280,
   playerSpawnY: 440,
-  enemySpawnX: 680,
-  enemySpawnY: 440,
   /** 手枪：抬枪 → 开火 1 帧 → 收枪 → 冷却 */
   pistolStartupFrames: 5,
   pistolFireFrames: 1,
@@ -61,16 +49,10 @@ export const SIM = {
   projectileRadius: 4,
   projectileLifetimeFrames: 90,
   /** 弹丸飞行超过这个距离就从模拟里删掉，不能站桩清完全关。 */
-  projectileMaxDistance: 560,
+  projectileMaxDistance: 420,
   muzzleForward: 22,
   muzzleUp: 34,
 } as const;
-
-export const PLATFORMS: readonly PlatformRect[] = [
-  { id: 'ground', x: 40, y: 440, w: 880, h: 64 },
-  { id: 'ledge-left', x: 90, y: 330, w: 150, h: 22 },
-  { id: 'ledge-right', x: 720, y: 330, w: 150, h: 22 },
-];
 
 export const VIEW = {
   parentId: 'game-root',

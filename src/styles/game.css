@@ -4,7 +4,7 @@
 
 @font-face {
   font-family: 'Press Start 2P';
-  src: url('/assets/ui/PressStart2P-Regular.ttf') format('truetype');
+  src: url('../assets/ui/PressStart2P-Regular.ttf') format('truetype');
   font-display: swap;
 }
 
@@ -247,7 +247,7 @@ body {
   background: transparent;
   border-style: solid;
   border-width: 12px 14px 16px;
-  border-image-source: url('/assets/ui/kenney/button-blue.png');
+  border-image-source: url('../assets/ui/kenney/button-blue.png');
   border-image-slice: 14 16 18 16 fill;
   border-image-repeat: stretch;
   image-rendering: pixelated;
@@ -264,7 +264,7 @@ body {
 
 /* 「下一关」用绿色按钮 */
 #overlay button.overlay-next {
-  border-image-source: url('/assets/ui/kenney/button-green.png');
+  border-image-source: url('../assets/ui/kenney/button-green.png');
 }
 
 .endcard {

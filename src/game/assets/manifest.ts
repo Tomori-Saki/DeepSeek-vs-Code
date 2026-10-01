@@ -14,6 +14,14 @@ import type { EnemyKind } from '../levels/types';
  * frameWidth/frameHeight 有值时按 spritesheet 切帧；省略则整图一帧。
  */
 
+/**
+ * 统一拼资源 URL：public/assets 下的相对路径。
+ * dev 时 BASE_URL='/'，构建后 base:'./'，子目录部署不再 404。
+ */
+export function assetUrl(path: string): string {
+  return `${import.meta.env.BASE_URL}assets/${path}`;
+}
+
 export interface AnimSource {
   key: string
   url: string
@@ -30,7 +38,7 @@ export interface AnimSource {
 export const PLAYER_ANIMS: readonly AnimSource[] = [
   {
     key: 'player-idle',
-    url: '/assets/characters/player/idle.png',
+    url: assetUrl('characters/player/idle.png'),
     frameCount: 1,
     frameWidth: 64,
     frameHeight: 64,
@@ -39,7 +47,7 @@ export const PLAYER_ANIMS: readonly AnimSource[] = [
   },
   {
     key: 'player-run',
-    url: '/assets/characters/player/run.png',
+    url: assetUrl('characters/player/run.png'),
     frameCount: 4,
     frameWidth: 64,
     frameHeight: 64,
@@ -48,7 +56,7 @@ export const PLAYER_ANIMS: readonly AnimSource[] = [
   },
   {
     key: 'player-jump',
-    url: '/assets/characters/player/jump.png',
+    url: assetUrl('characters/player/jump.png'),
     frameCount: 4,
     frameWidth: 64,
     frameHeight: 64,
@@ -57,7 +65,7 @@ export const PLAYER_ANIMS: readonly AnimSource[] = [
   },
   {
     key: 'player-fall',
-    url: '/assets/characters/player/jump.png',
+    url: assetUrl('characters/player/jump.png'),
     frameCount: 4,
     frameWidth: 64,
     frameHeight: 64,
@@ -66,7 +74,7 @@ export const PLAYER_ANIMS: readonly AnimSource[] = [
   },
   {
     key: 'player-hurt',
-    url: '/assets/characters/player/hurt.png',
+    url: assetUrl('characters/player/hurt.png'),
     frameCount: 1,
     frameRate: 8,
     repeat: 0,
@@ -74,7 +82,7 @@ export const PLAYER_ANIMS: readonly AnimSource[] = [
   },
   {
     key: 'player-attack',
-    url: '/assets/characters/player/attack.png',
+    url: assetUrl('characters/player/attack.png'),
     frameCount: 4,
     frameWidth: 64,
     frameHeight: 64,
@@ -83,7 +91,7 @@ export const PLAYER_ANIMS: readonly AnimSource[] = [
   },
   {
     key: 'player-dead',
-    url: '/assets/characters/player/dead.png',
+    url: assetUrl('characters/player/dead.png'),
     frameCount: 1,
     frameRate: 8,
     repeat: 0,
@@ -98,26 +106,26 @@ export const ENEMY_KIND_SPRITES: Record<
 > = {
   syntaxError: {
     key: 'enemy-syntax-error',
-    url: '/assets/characters/enemy/syntax-error.png',
+    url: assetUrl('characters/enemy/syntax-error.png'),
   },
   nullPointerException: {
     key: 'enemy-null-pointer',
-    url: '/assets/characters/enemy/null-pointer.png',
+    url: assetUrl('characters/enemy/null-pointer.png'),
   },
   stackOverflowError: {
     key: 'enemy-stack-overflow',
-    url: '/assets/characters/enemy/stack-overflow.png',
+    url: assetUrl('characters/enemy/stack-overflow.png'),
   },
   runtimeGlitch: {
     key: 'enemy-runtime-glitch',
-    url: '/assets/characters/enemy/runtime-glitch.png',
+    url: assetUrl('characters/enemy/runtime-glitch.png'),
   },
   // Boss 与 P3 内核。缺图由 PreloadScene 兜底生成大块占位。
   outOfMemoryError: {
     key: 'enemy-oom',
-    url: '/assets/characters/enemy/out-of-memory.png',
+    url: assetUrl('characters/enemy/out-of-memory.png'),
     coreKey: 'enemy-oom-core',
-    coreUrl: '/assets/characters/enemy/out-of-memory-core.png',
+    coreUrl: assetUrl('characters/enemy/out-of-memory-core.png'),
   },
 };
 
@@ -132,15 +140,15 @@ export const ENEMY_PLACEHOLDER_COLORS: Record<EnemyKind, number> = {
 
 /** Kenney 地面瓦片（单块，非整张 Sample 图） */
 export const KENNEY_GROUND_KEY = 'kenney-ground'
-export const KENNEY_GROUND_URL = '/assets/environment/kenney/ground.png'
+export const KENNEY_GROUND_URL = assetUrl('environment/kenney/ground.png')
 
 /** Kenney 背景瓦片（单块，非整张 Sample 图） */
 export const KENNEY_BG_KEY = 'kenney-bg'
-export const KENNEY_BG_URL = '/assets/environment/kenney/bg.png'
+export const KENNEY_BG_URL = assetUrl('environment/kenney/bg.png')
 
 /** 玩家手枪弹丸（白色圆球 FX） */
 export const PROJECTILE_KEY = 'projectile-white'
-export const PROJECTILE_URL = '/assets/fx/projectile-white.png'
+export const PROJECTILE_URL = assetUrl('fx/projectile-white.png')
 
 export type AudioEvent =
   | 'player-hurt'
@@ -154,12 +162,12 @@ export type AudioEvent =
 
 /** 本地音效。使用仓库内的 WAV，AudioSystem 加载失败时仍会静默降级。 */
 export const AUDIO_FILES: readonly { event: AudioEvent; url: string }[] = [
-  { event: 'player-hurt', url: '/assets/audio/player-hurt.wav' },
-  { event: 'shoot', url: '/assets/audio/shoot.wav' },
-  { event: 'enemy-hurt', url: '/assets/audio/enemy-hurt.wav' },
-  { event: 'enemy-death', url: '/assets/audio/enemy-death.wav' },
-  { event: 'exit-unlock', url: '/assets/audio/exit-unlock.wav' },
-  { event: 'player-death', url: '/assets/audio/player-death.wav' },
-  { event: 'level-clear', url: '/assets/audio/level-clear.wav' },
-  { event: 'warning-shot', url: '/assets/audio/warning-shot.wav' },
+  { event: 'player-hurt', url: assetUrl('audio/player-hurt.wav') },
+  { event: 'shoot', url: assetUrl('audio/shoot.wav') },
+  { event: 'enemy-hurt', url: assetUrl('audio/enemy-hurt.wav') },
+  { event: 'enemy-death', url: assetUrl('audio/enemy-death.wav') },
+  { event: 'exit-unlock', url: assetUrl('audio/exit-unlock.wav') },
+  { event: 'player-death', url: assetUrl('audio/player-death.wav') },
+  { event: 'level-clear', url: assetUrl('audio/level-clear.wav') },
+  { event: 'warning-shot', url: assetUrl('audio/warning-shot.wav') },
 ]

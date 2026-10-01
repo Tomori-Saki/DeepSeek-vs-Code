@@ -1,7 +1,7 @@
 import { SIM } from '../config';
 import { overlap } from './CollisionSystem';
-import { spawnHeapShot } from './CombatSystem';
-import { syncHurtbox } from './EntityState';
+import { spawnHeapShot, damagePlayer } from './CombatSystem';
+import { applyGravity, syncHurtbox } from './EntityState';
 import { spawnEnemy, type EnemyState } from './EnemyState';
 import type { GameState } from './GameState';
 
@@ -33,6 +33,9 @@ const CHARGE_WINDUP_FRAMES = 40;
 const CHARGE_SPEED = 600;
 const CHARGE_MAX_DISTANCE = 1200;
 const CHARGE_STUN_FRAMES = 120;
+/** 冲撞命中伤害与判定盒前伸（px） */
+const CHARGE_DAMAGE = 30;
+const CHARGE_HIT_REACH = 48;
 /** 召唤：每次冲撞后最多补 2 只，存活总数上限 4 */
 const SUMMON_PER_CHARGE = 2;
 const SUMMON_ALIVE_CAP = 4;
@@ -134,8 +137,7 @@ export function updateBoss(boss: EnemyState, state: GameState): void {
   if (boss.grounded && boss.velocity.y >= 0) {
     boss.velocity.y = 0;
   } else {
-    boss.velocity.y += SIM.gravity * SIM.fixedDt;
-    if (boss.velocity.y > SIM.maxFallSpeed) boss.velocity.y = SIM.maxFallSpeed;
+    applyGravity(boss);
   }
   syncHurtbox(boss);
 }
@@ -239,13 +241,8 @@ function updateWalls(boss: EnemyState, state: GameState): void {
             ? { x: wall.edgeX - wall.width, y: top - wall.height, w: wall.width, h: wall.height }
             : { x: wall.edgeX, y: top - wall.height, w: wall.width, h: wall.height };
         if (overlap(rect, player.hurtbox)) {
-          player.health = Math.max(0, player.health - WALL_DAMAGE);
-          player.hurtFrames = SIM.hurtStunFrames;
-          player.invulnFrames = SIM.invulnFrames;
-          player.flashFrames = SIM.flashFrames;
-          player.locomotion = 'hurt';
+          damagePlayer(state, { damage: WALL_DAMAGE, cancelAttack: false, hitStop: false });
           state.wallDamageCooldown = WALL_DAMAGE_INTERVAL;
-          state.shakeFrames = SIM.shakeFrames;
           break;
         }
       }
@@ -276,12 +273,7 @@ function updateSweepWaves(state: GameState): void {
       };
       if (overlap(rect, player.hurtbox)) {
         wave.hitApplied = true;
-        player.health = Math.max(0, player.health - wave.damage);
-        player.hurtFrames = SIM.hurtStunFrames;
-        player.invulnFrames = SIM.invulnFrames;
-        player.flashFrames = SIM.flashFrames;
-        player.locomotion = 'hurt';
-        state.shakeFrames = SIM.shakeFrames;
+        damagePlayer(state, { damage: wave.damage, cancelAttack: false, hitStop: false });
       }
     }
   }
@@ -313,6 +305,7 @@ function updateBossCharge(boss: EnemyState, state: GameState): void {
     if (boss.chargeFramesLeft <= 0) {
       boss.chargePhase = 'charge';
       boss.chargeDistanceLeft = CHARGE_MAX_DISTANCE;
+      boss.hitApplied = false;
     }
     return;
   }
@@ -320,6 +313,7 @@ function updateBossCharge(boss: EnemyState, state: GameState): void {
   if (boss.chargePhase === 'charge') {
     boss.velocity.x = boss.facing * CHARGE_SPEED;
     boss.chargeDistanceLeft -= Math.abs(boss.velocity.x) * SIM.fixedDt;
+    applyChargeHit(boss, state);
     // 撞场地边界（support 半宽钳制）或跑满 1200px → 硬直
     const half = boss.width / 2;
     const minX = boss.support.x + half;
@@ -345,6 +339,32 @@ function updateBossCharge(boss: EnemyState, state: GameState): void {
     boss.chargePhase = 'windup';
     boss.chargeFramesLeft = CHARGE_WINDUP_FRAMES;
   }
+}
+
+/**
+ * 冲撞扫掠判定：用 Boss 身体加前伸的矩形撞玩家，一次冲撞只结算一次。
+ * 玩家跳过 Boss 头顶或保持无敌即可躲开。
+ */
+function applyChargeHit(boss: EnemyState, state: GameState): void {
+  if (boss.hitApplied) return;
+  const player = state.player;
+  if (player.invulnFrames > 0 || player.locomotion === 'dead') return;
+  const rect = {
+    x:
+      boss.facing === 1
+        ? boss.position.x - boss.width / 2
+        : boss.position.x - boss.width / 2 - CHARGE_HIT_REACH,
+    y: boss.position.y - boss.height,
+    w: boss.width + CHARGE_HIT_REACH,
+    h: boss.height,
+  };
+  if (!overlap(rect, player.hurtbox)) return;
+
+  damagePlayer(state, {
+    damage: CHARGE_DAMAGE,
+    knockbackX: boss.facing * SIM.knockbackX,
+  });
+  boss.hitApplied = true;
 }
 
 /** 硬直结束后在 Boss 两侧各补一只 runtimeGlitch；存活召唤物上限 4，每次最多补 2 只 */

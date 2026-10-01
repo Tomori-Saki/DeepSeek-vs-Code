@@ -6,6 +6,7 @@ import { SIM, type PlatformRect } from '../src/game/config';
 import { InputMap } from '../src/game/input/InputMap';
 import { LEVELS } from '../src/game/levels';
 import { LEVEL1, platformUnder } from '../src/game/levels/level1';
+import type { LevelConfig } from '../src/game/levels/types';
 import { createInitialState, loadLevel, resetGameState } from '../src/game/simulation/GameState';
 import {
   resolveProjectileHits,
@@ -19,7 +20,9 @@ import {
   updateHeapFragments,
 } from '../src/game/simulation/HeapFragmentSystem';
 import { GameLoop, type InputFrame } from '../src/game/simulation/GameLoop';
-import { spawnEnemy } from '../src/game/simulation/EnemyState';
+import { createLevelEnemies, spawnEnemy } from '../src/game/simulation/EnemyState';
+import { createPlayer } from '../src/game/simulation/PlayerState';
+import { createLevelState } from '../src/game/simulation/LevelState';
 import { WALL_INITIAL_RIGHT, WALL_WIDTH } from '../src/game/simulation/BossSystem';
 import type { ProjectileState } from '../src/game/simulation/ProjectileState';
 
@@ -146,6 +149,10 @@ function main(): void {
   // 3. 一次 attackPressed 只产生 1 发弹丸，朝右飞且 vy=0，命中扣 pistolDamage 一次
   {
     const loop = new GameLoop();
+    // 射程收窄到 420 后，出生点(120)到首敌 sentinel-a(620)已超过 projectileMaxDistance，
+    // 从出生点开火打不到（这正是本次平衡调整的目的）。先站进该敌射程内，再验证
+    // “一次开火只出 1 发、命中扣 pistolDamage 一次”这条弹丸命中语义。
+    loop.state.player.position.x = 250;
     const hpBefore = firstEnemy(loop).health;
     stepOnce(loop, { attackPressed: true });
 
@@ -661,8 +668,15 @@ const LEVEL1_SPAWN_X = 120;
 
 function runRangeChecks(): void {
   const loop = new GameLoop();
+  const standX = loop.state.player.position.x;
+  // “打不到”的敌人 = 玩家站桩不动时既够不到、也不会自己送上门的敌人：
+  // 它的整段巡逻区间都落在警戒范围之外（不会被引过来），且初始位置仍在弹丸射程外。
+  // 提升警戒范围后，像 sentinel-a 这种巡逻最左端已进入警戒圈的会被主动引过来，
+  // 那属于“它自己走进射程”，不再算“站桩打不到”，因此这里按该不变量重新取值。
   const far = loop.state.enemies.filter(
-    (enemy) => enemy.position.x > loop.state.player.position.x + SIM.projectileMaxDistance + 40,
+    (enemy) =>
+      Math.min(enemy.patrolMinX, enemy.patrolMaxX) > standX + enemy.alertRange &&
+      enemy.position.x > standX + SIM.projectileMaxDistance + 40,
   );
   let guard = 0;
   while (guard < 400) {
@@ -703,7 +717,12 @@ function hasFloor(loop: GameLoop, x: number, feetY: number): boolean {
   );
 }
 
-function stepAdvance(loop: GameLoop, dir: -1 | 1, lookahead = 28): void {
+function stepAdvance(
+  loop: GameLoop,
+  dir: -1 | 1,
+  lookahead = 28,
+  allowJump = true,
+): void {
   const player = loop.state.player;
   const next = player.position.x + dir * lookahead;
   // 测试导航优先走地面；站在教学台上时先自然落回地面，避免把台边
@@ -713,7 +732,13 @@ function stepAdvance(loop: GameLoop, dir: -1 | 1, lookahead = 28): void {
   const gap =
     onMainGround &&
     (crossesGroundGap(loop, player.position.x, next) || !groundAt(loop, next));
-  const jump = gap;
+  // 起手/开火帧不能起跳，且那时水平速度被强制为 0：带着攻击起跳会丢掉
+  // 整个上升段的水平位移，跳跃距离只剩一半，跳不过 60/80px 的深坑。
+  const blockingAttack =
+    player.attackPhase === 'startup' || player.attackPhase === 'fire';
+  // 后退（脱离接触）时不需要跨坑，而 groundAt 的 8px 内边距会把平台边缘
+  // 当成坑，让机器人贴着边缘原地乱跳、白白挨打，所以后退方向禁用跳跃。
+  const jump = allowJump && gap && !blockingAttack;
   stepOnce(loop, {
     moveX: dir,
     jumpPressed: jump,
@@ -792,25 +817,63 @@ function clearGroundTarget(
   const distance = Math.abs(dx);
   const dir: -1 | 1 = dx < 0 ? -1 : 1;
   // 站在警戒范围外开火；近战和瞬移敌人都不会被引到玩家身边。
-  // 目标在地面而玩家仍在高台时，先从高台右侧落回主路，不能在台面
-  // 上反复横走后掉进深坑。
+  // 目标在地面而玩家仍在高台/空中时，先落回主路。站着薄台且正下方是
+  // 实心地面就直接 S 穿下去，落点固定，不会走出台缘摔进坑里；空中竖直
+  // 下落不再横移，避免在台缘左右抖动。空中保持跳跃键：起跳那一帧由
+  // stepAdvance 按下跳跃，之后若松开，跳跃会被截成 20px 出头的短跳，
+  // 跳不过 60/80px 的深坑。
   if (player.position.y < 430 || !player.grounded) {
-    stepOnce(loop, { moveX: 1 });
+    const underX = player.position.x;
+    const safeUnder = loop.state.platforms.some(
+      (platform) =>
+        platform.y === 440 &&
+        underX >= platform.x &&
+        underX <= platform.x + platform.w,
+    );
+    const onThinPlatform =
+      player.grounded &&
+      loop.state.platforms.some(
+        (platform) =>
+          Math.abs(player.position.y - platform.y) < 1e-3 &&
+          platform.h <= 24 &&
+          underX >= platform.x &&
+          underX <= platform.x + platform.w,
+      );
+    if (onThinPlatform && safeUnder) {
+      // 薄台可以直接 S 穿下去，落点就是正下方的主路地面，不会走出台缘。
+      stepOnce(loop, { dropPressed: true });
+    } else if (!player.grounded) {
+      // 空中必须保持朝目标横移：空中水平速度是“每帧直接赋值”而不是加速，
+      // 一旦给 0 就当场停住。起跳点又往往紧贴坑缘（只剩 20~30px），停住
+      // 必然落回坑里；全程横移才能把这一跳飞完，落到对岸或目标身边。
+      stepOnce(loop, { moveX: dir, jumpHeld: player.velocity.y < 0 });
+    } else {
+      stepOnce(loop, {
+        moveX: safeUnder ? 1 : -1,
+        jumpHeld: player.velocity.y < 0,
+      });
+    }
     return;
   }
   const safeDistance = target.enemyKind === 'nullPointerException' ? 285 : 260;
   if (distance < safeDistance) {
-    const retreat: -1 | 1 = dir === 1 ? -1 : 1;
-    // 近距离先保持枪口朝向目标，再边后退边开火，给近战敌人留下
-    // 追击距离，同时仍然使用真实的攻击冷却和弹丸碰撞。
-    if (canShoot(loop) && player.facing === dir) {
-      stepOnce(loop, { moveX: retreat, attackPressed: true });
-    } else {
-      stepAdvance(loop, retreat, 18);
+    // 引擎里 facing 完全由移动方向决定，所以“边后退边开火”会把枪口转向
+    // 身后：一旦转过一次，facing === dir 就再也不成立，机器人从此一枪
+    // 不开、一路退到台缘掉进坑里。这里改成贴脸站定射击，只用真实的攻击
+    // 冷却限制射速；冷却期原地不动保住枪口，只在朝向反了时补一帧转身。
+    if (!player.grounded) {
+      stepOnce(loop, { moveX: dir, jumpHeld: player.velocity.y < 0 });
+      return;
     }
+    if (canShoot(loop)) {
+      stepOnce(loop, { moveX: 0, attackPressed: true });
+      return;
+    }
+    stepOnce(loop, { moveX: player.facing === dir ? 0 : dir });
     return;
   }
   if (
+    player.grounded &&
     canShoot(loop) &&
     distance <= SIM.projectileMaxDistance - 36 &&
     loop.state.match === 'playing'
@@ -839,6 +902,13 @@ function clearUpperTarget(
   const projectileClearOfPlatform = player.position.y <= target.position.y + 26;
   const projectileCanReachTarget =
     player.position.y >= target.position.y - 38 && projectileClearOfPlatform;
+  // 目标明显更高时必须先站到它正下方（接力台范围内）再起跳。这一段用
+  // stepAdvance 走，顺带处理路上的坑；直接给 moveX 会一头走进坑里。
+  const needsClimb = player.position.y - target.position.y > 60;
+  if (needsClimb && Math.abs(dx) >= 24) {
+    stepAdvance(loop, dir, 22);
+    return;
+  }
   const jumpPressed = player.grounded && !projectileCanReachTarget;
   const jumpHeld = jumpPressed || !player.grounded;
   stepOnce(loop, {
@@ -983,6 +1053,11 @@ function runKindChecks(): void {
 function runSentinelChecks(): void {
   {
     const loop = new GameLoop();
+    // 警戒范围拉高后，出生点(120)已落在 sentinel-a 巡逻最左端(520)的警戒圈内，
+    // 敌人会立刻转追击，无法观察完整巡逻往返。把玩家挪到全图之外的安全点，
+    // 让首敌能在无干扰下巡逻，断言本身（巡逻位移 + 到边界转向）不变。
+    loop.state.player.position.x = 2500;
+    loop.state.player.position.y = 440;
     const enemy = loop.state.enemies[0];
     const x0 = enemy.position.x;
     let turned = false;
@@ -1060,13 +1135,25 @@ function runSentinelChecks(): void {
     let guard = 0;
     while (loop.state.match === 'playing' && guard < 2600) {
       guard += 1;
-      if (loop.state.player.position.x < loop.state.exit.x + 12) stepAdvance(loop, 1);
-      else stepOnce(loop);
+      if (loop.state.player.position.x < loop.state.exit.x + 12) {
+        const runner = loop.state.player;
+        // 故障场里水平速度 ×0.55、起跳初速 ×0.82，滞空水平位移只剩 55px，
+        // 硬跳过不了 60/80px 的坑。人类玩家会等减速散掉再走，机器人也照做。
+        const gapAhead =
+          runner.grounded &&
+          runner.position.y === 440 &&
+          !groundAt(loop, runner.position.x + 28);
+        if (gapAhead && runner.slowFrames > 0) {
+          stepOnce(loop, { moveX: 0 });
+        } else {
+          stepAdvance(loop, 1);
+        }
+      } else stepOnce(loop);
     }
     check(
       '清敌后出口解锁并完成关卡',
       unlocked && loop.state.match === 'levelCleared',
-      `exit=${loop.state.level.exitUnlocked} match=${loop.state.match} x=${loop.state.player.position.x.toFixed(1)} y=${loop.state.player.position.y.toFixed(1)} frame=${loop.state.frame} hp=${loop.state.enemies.map((e) => e.health).join(',')}`,
+      `exit=${loop.state.level.exitUnlocked} match=${loop.state.match} x=${loop.state.player.position.x.toFixed(1)} y=${loop.state.player.position.y.toFixed(1)} frame=${loop.state.frame} 剩余=${loop.state.enemies.filter((e) => e.health > 0).map((e) => `${e.id}:${e.health}@${e.position.x.toFixed(0)},${e.position.y.toFixed(0)}`).join(' ')}`,
     );
 
     stepOnce(loop, { restartPressed: true });
@@ -2509,8 +2596,8 @@ function runS7HeapChecks(): void {
     parkOtherEnemies(loop, 'none');
     loop.state.player.invulnFrames = 99999;
     const enemy = loop.state.enemies[0]!;
-    // 挪到出口缓冲区（2010–2190 上方没有悬空平台），避免上升段撞到台子底部
-    enemy.position.x = 2050;
+    // 挪到出口平台（2120–2600 上方没有悬空平台），避免上升段撞到台子底部
+    enemy.position.x = 2150;
     enemy.position.y = 440;
     spawnHeapShot(loop.state, enemy, enemy.position.x + 300);
     const shot = loop.state.projectiles[loop.state.projectiles.length - 1]!;
@@ -2602,16 +2689,75 @@ function runS7HeapChecks(): void {
 
 runS7HeapChecks();
 
+/**
+ * Boss 回归测试专用场地。
+ * 原第 3 关 Boss 房已从游戏关卡表移除（留给第 10 关重写），
+ * 这里复刻它的几何作为测试夹具，保证 Boss 引擎的回归覆盖不丢。
+ */
+const TEST_BOSS_ROOM: LevelConfig = {
+  id: 'test-boss-room',
+  displayName: 'TEST BOSS ROOM',
+  worldWidth: 2000,
+  worldHeight: 560,
+  fallDeathY: 540,
+  playerSpawnX: 260,
+  playerSpawnY: 440,
+  platforms: [
+    { id: 'l3-ground', x: 200, y: 440, w: 1700, h: 80 },
+    { id: 'l3-ledge-left', x: 120, y: 330, w: 200, h: 16 },
+    { id: 'l3-ledge-right', x: 1680, y: 330, w: 200, h: 16 },
+    { id: 'l3-mid-left', x: 400, y: 360, w: 120, h: 16 },
+    { id: 'l3-mid-right', x: 1480, y: 360, w: 120, h: 16 },
+  ],
+  enemies: [
+    { id: 'l3-boss', x: 1000, y: 440, facing: -1, patrolMinX: 700, patrolMaxX: 1300, enemyKind: 'outOfMemoryError' },
+  ],
+  exit: { id: 'l3-exit', x: 1852, y: 362, w: 48, h: 78 },
+};
+
+/**
+ * 把 loop 挂到 TEST_BOSS_ROOM。levelIndex 故意停在最后一关，
+ * 让「Boss 死后转场回第一关」的断言依旧成立。
+ */
+function mountBossRoom(loop: GameLoop): void {
+  const state = loop.state;
+  const level = TEST_BOSS_ROOM;
+  state.levelIndex = LEVELS.length - 1;
+  state.player = createPlayer(level.playerSpawnX, level.playerSpawnY);
+  state.enemies = createLevelEnemies(level);
+  state.level = createLevelState(level);
+  state.exit = { ...level.exit };
+  state.worldWidth = level.worldWidth;
+  state.worldHeight = level.worldHeight;
+  state.fallDeathY = level.fallDeathY;
+  state.platforms = level.platforms.map((platform) => ({ ...platform }));
+  state.projectiles = [];
+  state.nextProjectileId = 1;
+  state.glitchZones = [];
+  state.nextZoneId = 1;
+  state.fragments = [];
+  state.nextFragmentId = 1;
+  state.walls = [];
+  state.hazards = [];
+  state.nextHazardId = 1;
+  state.wallDamageCooldown = 0;
+  state.wallReturnFrames = 0;
+  state.wallSpeedScale = 1;
+  state.fragmentCap = 4;
+  state.match = 'playing';
+  state.clearFrames = 0;
+  state.transitionFrames = 0;
+}
+
 /** S8：Boss P1（LEAK）+ P2（GC PAUSE） */
 function runS8BossChecks(): void {
-  const bossLevelIndex = LEVELS.length - 1;
   const findBoss = (loop: GameLoop) =>
     loop.state.enemies.find((e) => e.enemyKind === 'outOfMemoryError');
 
   // 1. Boss 体型 96/120，SIM.enemyWidth/Height 没被顺手改掉
   {
     const loop = new GameLoop();
-    loadLevel(loop.state, bossLevelIndex);
+    mountBossRoom(loop);
     const boss = findBoss(loop);
     check(
       'Boss 体型 96/120 且 SIM 不变',
@@ -2629,7 +2775,7 @@ function runS8BossChecks(): void {
   // 2. heapShot 每 150 帧触发一次
   {
     const loop = new GameLoop();
-    loadLevel(loop.state, bossLevelIndex);
+    mountBossRoom(loop);
     loop.state.player.invulnFrames = 999999;
     loop.state.player.position.x = 300;
     const idBefore = loop.state.nextProjectileId;
@@ -2641,7 +2787,7 @@ function runS8BossChecks(): void {
   // 3. 3 块碎片时墙速约 6 px/s；0 块时退回
   {
     const loop = new GameLoop();
-    loadLevel(loop.state, bossLevelIndex);
+    mountBossRoom(loop);
     const boss = findBoss(loop)!;
     loop.state.player.invulnFrames = 999999;
     loop.state.player.position.x = 1000;
@@ -2672,7 +2818,7 @@ function runS8BossChecks(): void {
   // 4 + 5 + 6. 66% 触发一次 GC；期间不动不攻击；结束后清碎片、墙回初始、放横扫波
   {
     const loop = new GameLoop();
-    loadLevel(loop.state, bossLevelIndex);
+    mountBossRoom(loop);
     const boss = findBoss(loop)!;
     loop.state.player.invulnFrames = 999999;
     loop.state.player.position.x = 300;
@@ -2730,7 +2876,7 @@ function runS8BossChecks(): void {
   // 7. knockbackResist 0.12：命中 Boss 后水平速度约 280 × 0.12
   {
     const loop = new GameLoop();
-    loadLevel(loop.state, bossLevelIndex);
+    mountBossRoom(loop);
     const boss = findBoss(loop)!;
     stepOnce(loop);
     const proj: ProjectileState = {
@@ -2773,7 +2919,6 @@ runS8BossChecks();
 
 /** S9：Boss P3（FATAL）+ 召唤 + 出口条件 */
 function runS9FatalChecks(): void {
-  const bossLevelIndex = LEVELS.length - 1;
   const findBoss = (loop: GameLoop) =>
     loop.state.enemies.find((e) => e.enemyKind === 'outOfMemoryError')!;
   const aliveSummons = (loop: GameLoop) =>
@@ -2828,10 +2973,12 @@ function runS9FatalChecks(): void {
   // 1. spawnEnemy：id 唯一、countsTowardExit 默认 false、support 与出生平台一致
   {
     const loop = new GameLoop();
-    loadLevel(loop.state, bossLevelIndex);
+    mountBossRoom(loop);
     const a = spawnEnemy(loop.state, 'runtimeGlitch', 800, 440);
     const b = spawnEnemy(loop.state, 'runtimeGlitch', 900, 440);
-    const support = platformUnder(LEVELS[bossLevelIndex]!, 800, 440);
+    // spawnEnemy 的 support 走 levelAt(state.levelIndex)，
+    // 而 Boss 房几何是测试夹具，所以这里也用当前关卡下标做对照
+    const support = platformUnder(LEVELS[loop.state.levelIndex]!, 800, 440);
     check(
       'spawnEnemy id 唯一且默认不计出口',
       a.id !== b.id && a.countsTowardExit === false && b.countsTowardExit === false,
@@ -2847,7 +2994,7 @@ function runS9FatalChecks(): void {
   // 2. 只打死 Boss、召唤物还活着时 exitUnlocked === true（防死锁）
   {
     const loop = new GameLoop();
-    loadLevel(loop.state, bossLevelIndex);
+    mountBossRoom(loop);
     loop.state.player.invulnFrames = 999999;
     spawnEnemy(loop.state, 'runtimeGlitch', 800, 440);
     spawnEnemy(loop.state, 'runtimeGlitch', 900, 440);
@@ -2869,7 +3016,7 @@ function runS9FatalChecks(): void {
   // 6. 连续冲撞 3 次后存活召唤物不超过 4
   {
     const loop = new GameLoop();
-    loadLevel(loop.state, bossLevelIndex);
+    mountBossRoom(loop);
     const boss = findBoss(loop);
     loop.state.player.invulnFrames = 999999;
     loop.state.player.position.x = 1000;
@@ -2953,7 +3100,7 @@ function runS9FatalChecks(): void {
   // 7. 最后一关 Boss 死后：SUCCEEDED 停留，随后转场回第一关（主人要求循环）
   {
     const loop = new GameLoop();
-    loadLevel(loop.state, bossLevelIndex);
+    mountBossRoom(loop);
     loop.state.player.invulnFrames = 999999;
     const boss = findBoss(loop);
     boss.health = 1;
@@ -2992,7 +3139,7 @@ function runTutorialAndFlowChecks(): void {
     const loop = new GameLoop();
     const player = loop.state.player;
     player.position.x = 240;
-    player.position.y = 330;
+    player.position.y = 340;
     player.velocity.x = 0;
     player.velocity.y = 0;
     player.grounded = true;
@@ -3021,8 +3168,8 @@ function runTutorialAndFlowChecks(): void {
   // 3. 死亡后不自动进下一关：停留 ERROR，只能重新开始当前关
   {
     const loop = new GameLoop();
-    // 把玩家放到第一个坑（400–450）上空
-    loop.state.player.position.x = 420;
+    // 把玩家放到第一个坑（420–460）正中上空
+    loop.state.player.position.x = 440;
     loop.state.player.position.y = 440;
     loop.state.player.grounded = false;
     let guard = 0;
@@ -3039,7 +3186,7 @@ function runTutorialAndFlowChecks(): void {
     );
   }
 
-  // 4. Boss 关（最后一关）死亡不自动进关
+  // 4. 最后一关死亡不自动进关
   {
     const loop = new GameLoop();
     loadLevel(loop.state, LEVELS.length - 1);
@@ -3095,7 +3242,7 @@ function runGeometryAndBossJumpChecks(): void {
 
   // 2. Boss 房出口门不与右墙初始位置重叠（门曾被墙挤伤玩家）
   {
-    const level3 = LEVELS[LEVELS.length - 1]!;
+    const level3 = TEST_BOSS_ROOM;
     check(
       '出口门在右墙初始位置之外',
       level3.exit.x >= WALL_INITIAL_RIGHT + WALL_WIDTH,
@@ -3103,9 +3250,9 @@ function runGeometryAndBossJumpChecks(): void {
     );
   }
 
-  // 3. 第三关有中场浮台，且从地面一级跳可上（80 ≤ 123）
+  // 3. Boss 房有中场浮台，且从地面一级跳可上（80 ≤ 123）
   {
-    const level3 = LEVELS[LEVELS.length - 1]!;
+    const level3 = TEST_BOSS_ROOM;
     const midLeft = level3.platforms.find((p) => p.id === 'l3-mid-left');
     const midRight = level3.platforms.find((p) => p.id === 'l3-mid-right');
     check(
@@ -3121,7 +3268,7 @@ function runGeometryAndBossJumpChecks(): void {
   // 4. 玩家站上高台时 Boss 起跳追上去
   {
     const loop = new GameLoop();
-    loadLevel(loop.state, LEVELS.length - 1);
+    mountBossRoom(loop);
     const boss = loop.state.enemies.find((e) => e.enemyKind === 'outOfMemoryError')!;
     loop.state.player.invulnFrames = 999999;
     boss.heapShotFramesLeft = 99999;

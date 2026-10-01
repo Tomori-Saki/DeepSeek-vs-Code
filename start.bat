@@ -12,6 +12,6 @@ if not exist node_modules (
   )
 )
 
-echo 启动游戏服务器，浏览器将打开 http://localhost:5173/
-start "" http://localhost:5173/
-call npm run dev
+rem --open 交给 vite：等服务器就绪后再打开浏览器，避免先开页面白屏
+echo 启动游戏服务器，服务就绪后自动打开 http://localhost:5173/
+call npm run dev -- --open

@@ -238,6 +238,13 @@ export function spawnHeapShot(
   enemy: GameState['enemies'][number],
   targetX: number,
 ): void {
+  const spawnY = enemy.position.y - enemy.height * 0.55;
+  // 生成点被平台压住（Boss 站浮台正下方）时推迟重试，
+  // 避免弹丸刚生成就被 platformAt 静默销毁、白白浪费一次攻击
+  if (platformAt(state, enemy.position.x, spawnY, 7)) {
+    enemy.heapShotFramesLeft = 15;
+    return;
+  }
   const dir = targetX >= enemy.position.x ? 1 : -1;
   state.projectiles.push({
     id: state.nextProjectileId,
@@ -246,14 +253,14 @@ export function spawnHeapShot(
     gravity: 900,
     spawnFragmentOnLand: true,
     x: enemy.position.x,
-    y: enemy.position.y - enemy.height * 0.55,
+    y: spawnY,
     vx: dir * 240,
     vy: -380,
     radius: 7,
     damage: 12,
     lifetimeFrames: 240,
     originX: enemy.position.x,
-    originY: enemy.position.y - enemy.height * 0.55,
+    originY: spawnY,
     travelDistance: 0,
     maxDistance: 900,
     alive: true,
@@ -261,21 +268,49 @@ export function spawnHeapShot(
   state.nextProjectileId += 1;
 }
 
-function applyEnemyShot(state: GameState, proj: ProjectileState): void {
+/**
+ * 统一的玩家受击结算：扣血、受击硬直、无敌帧、闪白、震屏。
+ * knockbackX 省略时保持玩家当前速度（墙挤压/横扫波不推人）；
+ * cancelAttack 默认打断当前射击；hitStop 默认触发（墙/波为 false）。
+ */
+export function damagePlayer(
+  state: GameState,
+  options: {
+    damage: number;
+    knockbackX?: number;
+    knockbackY?: number;
+    cancelAttack?: boolean;
+    hitStop?: boolean;
+  },
+): void {
   const player = state.player;
-  player.health = Math.max(0, player.health - proj.damage);
-  player.velocity.x = Math.sign(proj.vx) * 160;
-  player.velocity.y = SIM.knockbackY;
+  player.health = Math.max(0, player.health - options.damage);
+  if (options.knockbackX !== undefined) {
+    player.velocity.x = options.knockbackX;
+    player.velocity.y = options.knockbackY ?? SIM.knockbackY;
+  }
   player.hurtFrames = SIM.hurtStunFrames;
   player.invulnFrames = SIM.invulnFrames;
   player.flashFrames = SIM.flashFrames;
-  player.attackPhase = 'none';
-  player.attackFramesLeft = 0;
-  player.firedThisShot = false;
   player.locomotion = 'hurt';
-  proj.alive = false;
-  state.hitStopFrames = SIM.hitStopFrames;
+  if (options.cancelAttack !== false) {
+    player.attackPhase = 'none';
+    player.attackFramesLeft = 0;
+    player.hitbox = null;
+    player.firedThisShot = false;
+  }
+  if (options.hitStop !== false) {
+    state.hitStopFrames = SIM.hitStopFrames;
+  }
   state.shakeFrames = SIM.shakeFrames;
+}
+
+function applyEnemyShot(state: GameState, proj: ProjectileState): void {
+  damagePlayer(state, {
+    damage: proj.damage,
+    knockbackX: Math.sign(proj.vx) * 160,
+  });
+  proj.alive = false;
 }
 
 function applyProjectileHit(
@@ -285,8 +320,11 @@ function applyProjectileHit(
 ): void {
   const attacker = state.player;
 
-  // Boss 的 FATAL 转场期间无敌
-  if (victim.enemyKind === 'outOfMemoryError' && victim.fatalFrames > 0) {
+  // Boss 的 FATAL 转场与 GC PAUSE 冻结期间无敌（弹丸被吸收）
+  if (
+    victim.enemyKind === 'outOfMemoryError' &&
+    (victim.fatalFrames > 0 || victim.gcFrames > 0)
+  ) {
     proj.alive = false;
     return;
   }
@@ -336,7 +374,6 @@ function applyProjectileHit(
 }
 
 function applyEnemyMeleeHit(state: GameState, attacker: GameState['enemies'][number]): void {
-  const victim = state.player;
   // 第一段扣 damage；syntaxError 第二段扣 comboDamage（14），击退用 comboKnockbackScale
   const secondSlash = attacker.enemyKind === 'syntaxError' && attacker.comboIndex >= 1;
   let damage = secondSlash ? attacker.comboDamage : attacker.damage;
@@ -349,26 +386,12 @@ function applyEnemyMeleeHit(state: GameState, attacker: GameState['enemies'][num
         : attacker.damage + attacker.stackDepth * attacker.stackDamageGrowth;
   }
 
-  victim.health = Math.max(0, victim.health - damage);
-
-  victim.velocity.x = attacker.facing * SIM.knockbackX * scale;
-  victim.velocity.y = SIM.knockbackY;
-
-  victim.hurtFrames = SIM.hurtStunFrames;
-  victim.invulnFrames = SIM.invulnFrames;
-  victim.flashFrames = SIM.flashFrames;
-
-  // 取消受害者当前攻击
-  victim.attackPhase = 'none';
-  victim.attackFramesLeft = 0;
-  victim.hitbox = null;
-  victim.hitApplied = false;
-  victim.firedThisShot = false;
-  victim.locomotion = 'hurt';
+  damagePlayer(state, {
+    damage,
+    knockbackX: attacker.facing * SIM.knockbackX * scale,
+  });
 
   attacker.hitApplied = true;
-  state.hitStopFrames = SIM.hitStopFrames;
-  state.shakeFrames = SIM.shakeFrames;
 }
 
 function evaluateMatchOutcome(state: GameState): void {

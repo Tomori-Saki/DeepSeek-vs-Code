@@ -16,7 +16,7 @@ import {
   type GameState,
 } from './GameState';
 import { updateLevel } from './LevelSystem';
-import { syncHurtbox } from './EntityState';
+import { applyGravity, syncHurtbox } from './EntityState';
 
 export interface InputFrame {
   moveX: -1 | 0 | 1;
@@ -346,13 +346,6 @@ export class GameLoop {
     }
 
     syncHurtbox(player);
-  }
-}
-
-function applyGravity(body: { velocity: { y: number }; grounded: boolean }): void {
-  body.velocity.y += SIM.gravity * SIM.fixedDt;
-  if (body.velocity.y > SIM.maxFallSpeed) {
-    body.velocity.y = SIM.maxFallSpeed;
   }
 }
 

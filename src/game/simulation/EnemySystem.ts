@@ -1,7 +1,7 @@
 import { SIM } from '../config';
 import { updateBoss } from './BossSystem';
 import { spawnNullProjectile } from './CombatSystem';
-import { syncHurtbox } from './EntityState';
+import { applyGravity, syncHurtbox } from './EntityState';
 import { pushGlitchZone } from './GlitchZoneSystem';
 import type { EnemyState } from './EnemyState';
 import type { GameState } from './GameState';
@@ -19,7 +19,19 @@ export function updateEnemies(state: GameState): void {
     }
     updateOne(enemy, state.player, state);
   }
+  // 死亡演出结束后清掉杂兵尸体；Boss 保留（dead 分支每帧清墙与波）
+  if (state.enemies.some((enemy) => enemy.behavior === 'dead')) {
+    state.enemies = state.enemies.filter(
+      (enemy) =>
+        enemy.enemyKind === 'outOfMemoryError' ||
+        enemy.behavior !== 'dead' ||
+        enemy.deathFrames <= DEATH_LINGER_FRAMES,
+    );
+  }
 }
+
+/** 死亡演出时长（帧），与渲染层 enemyDeathTransform 的消散终点一致 */
+const DEATH_LINGER_FRAMES = 21;
 
 function updateOne(enemy: EnemyState, player: PlayerState, state: GameState): void {
   if (enemy.blinkCooldownFrames > 0) enemy.blinkCooldownFrames -= 1;
@@ -29,6 +41,7 @@ function updateOne(enemy: EnemyState, player: PlayerState, state: GameState): vo
     enemy.velocity.y = 0;
     enemy.hitbox = null;
     enemy.attackPhase = 'none';
+    enemy.deathFrames += 1;
     if (!enemy.grounded) applyGravity(enemy);
     syncHurtbox(enemy);
     return;
@@ -42,6 +55,8 @@ function updateOne(enemy: EnemyState, player: PlayerState, state: GameState): vo
     enemy.hitbox = null;
     enemy.velocity.x *= 0.86;
     applyGravity(enemy);
+    // 受击击退同样受 support 边界钳制，避免被推出平台坠落卡死出口
+    keepOnSupport(enemy);
     syncHurtbox(enemy);
     return;
   }
@@ -135,7 +150,7 @@ function decide(enemy: EnemyState, player: PlayerState, state: GameState): void 
   const dy = Math.abs(player.position.y - enemy.position.y);
   const playerAlive = player.health > 0 && player.locomotion !== 'dead';
   if (isRanged(enemy)) {
-    decideRanged(enemy, playerAlive, dx, adx);
+    decideRanged(enemy, playerAlive, dx, adx, dy);
     return;
   }
   if (isGlitch(enemy)) {
@@ -226,6 +241,7 @@ function decideRanged(
   playerAlive: boolean,
   dx: number,
   adx: number,
+  dy: number,
 ): void {
   if (!playerAlive) {
     patrol(enemy);
@@ -237,7 +253,13 @@ function decideRanged(
     enemy.velocity.x = (dx < 0 ? 1 : -1) * enemy.patrolSpeed;
     return;
   }
-  if (adx < enemy.attackRange && enemy.attackCooldownFrames === 0 && enemy.grounded) {
+  // null 弹是水平直线（vy=0），玩家在高台上时打不中；不开火省冷却
+  if (
+    adx < enemy.attackRange &&
+    dy < 48 &&
+    enemy.attackCooldownFrames === 0 &&
+    enemy.grounded
+  ) {
     enemy.behavior = 'attack';
     enemy.attackPhase = 'startup';
     enemy.attackFramesLeft = enemy.attackStartupFrames;
@@ -349,11 +371,6 @@ function keepOnSupport(enemy: EnemyState): void {
   if (enemy.behavior === 'patrol') {
     enemy.facing = enemy.facing === 1 ? -1 : 1;
   }
-}
-
-function applyGravity(body: { velocity: { y: number } }): void {
-  body.velocity.y += SIM.gravity * SIM.fixedDt;
-  if (body.velocity.y > SIM.maxFallSpeed) body.velocity.y = SIM.maxFallSpeed;
 }
 
 function isRanged(enemy: EnemyState): boolean {

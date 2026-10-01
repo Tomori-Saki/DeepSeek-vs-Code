@@ -16,42 +16,50 @@ export const LEVEL2 = {
   playerSpawnX: 120,
   playerSpawnY: 440,
   platforms: [
-    // 地面四段，坑宽 50 / 60 / 80，都是第一关学过的档位
-    { id: 'l2-ground-a', x: 40, y: 440, w: 760, h: 80 },
-    { id: 'l2-ground-b', x: 850, y: 440, w: 620, h: 80 },
-    { id: 'l2-ground-c', x: 1530, y: 440, w: 700, h: 80 },
-    { id: 'l2-ground-d', x: 2310, y: 440, w: 450, h: 80 },
+    // 地面四段，坑宽统一 80px（一格），落地节奏一致。
+    { id: 'l2-ground-a', x: 0, y: 440, w: 700, h: 80 },
+    { id: 'l2-ground-b', x: 780, y: 440, w: 720, h: 80 },
+    { id: 'l2-ground-c', x: 1580, y: 440, w: 680, h: 80 },
+    { id: 'l2-ground-d', x: 2340, y: 440, w: 460, h: 80 },
 
-    // 教学高台与跨坑高路
-    { id: 'l2-mid-1', x: 300, y: 340, w: 180, h: 16 },
-    { id: 'l2-mid-2', x: 540, y: 320, w: 160, h: 16 },
-    // 高路平台抬高到 280：地面起跳够不到，必须经中间台二级跳
-    { id: 'l2-high-1', x: 760, y: 280, w: 240, h: 16 },
-    // A 组安全台：高出地面 110px，站上后故障场判定不成立
-    { id: 'l2-a-safe', x: 1000, y: 330, w: 150, h: 16 },
-    { id: 'l2-mid-3', x: 1180, y: 340, w: 200, h: 16 },
-    { id: 'l2-high-2', x: 1450, y: 280, w: 200, h: 16 },
-    // B 组窄门：130px 宽，叠层的 stackOverflowError 独占
-    { id: 'l2-gate', x: 1700, y: 340, w: 130, h: 16 },
-    { id: 'l2-mid-4', x: 1900, y: 330, w: 170, h: 16 },
-    { id: 'l2-high-3', x: 2090, y: 280, w: 220, h: 16 },
-    { id: 'l2-mid-5', x: 2380, y: 340, w: 180, h: 16 },
-    { id: 'l2-exit-ledge', x: 2590, y: 330, w: 150, h: 16 },
+    // 入口教学：先一级跳上 340，再由 340 二段跳上 260（地面直上 260 要跨 180px，超过单跳上限）。
+    { id: 'l2-mid-1', x: 280, y: 340, w: 160, h: 16 },
+    { id: 'l2-mid-2', x: 520, y: 340, w: 180, h: 16 },
+    { id: 'l2-high-1', x: 780, y: 260, w: 220, h: 16 },
+
+    // A 组：安全台高出地面 100px，站上去故障场判定不成立；右侧留接力台。
+    { id: 'l2-a-safe', x: 1060, y: 340, w: 160, h: 16 },
+    { id: 'l2-mid-3', x: 1300, y: 340, w: 200, h: 16 },
+    { id: 'l2-high-2', x: 1580, y: 260, w: 200, h: 16 },
+
+    // B 组：130px 窄门，叠层怪独占。
+    { id: 'l2-gate', x: 1880, y: 340, w: 130, h: 16 },
+
+    // C 组：控制 + 远程组合，中台 → 高台接力，末端出口小台。
+    { id: 'l2-mid-4', x: 2060, y: 340, w: 180, h: 16 },
+    { id: 'l2-high-3', x: 2300, y: 260, w: 200, h: 16 },
+    { id: 'l2-mid-5', x: 2460, y: 340, w: 140, h: 16 },
+    { id: 'l2-exit-ledge', x: 2620, y: 340, w: 140, h: 16 },
   ] satisfies readonly PlatformRect[],
   enemies: [
-    // A 组：教故障场。地面两只 runtimeGlitch 铺场，高台一只远程
-    { id: 'l2-a-glitch-1', x: 950, y: 440, facing: -1, patrolMinX: 880, patrolMaxX: 1060, enemyKind: 'runtimeGlitch' },
-    { id: 'l2-a-glitch-2', x: 1180, y: 440, facing: -1, patrolMinX: 1080, patrolMaxX: 1300, enemyKind: 'runtimeGlitch' },
-    { id: 'l2-a-null-1', x: 1280, y: 340, facing: -1, patrolMinX: 1200, patrolMaxX: 1360, enemyKind: 'nullPointerException' },
-    // B 组：教打断。窄门上的 stackOverflowError 叠层后玩家站不上去
-    { id: 'l2-b-syn-1', x: 1620, y: 440, facing: -1, patrolMinX: 1560, patrolMaxX: 1700, enemyKind: 'syntaxError' },
-    { id: 'l2-b-stack', x: 1765, y: 340, facing: -1, patrolMinX: 1730, patrolMaxX: 1800, enemyKind: 'stackOverflowError' },
-    { id: 'l2-b-syn-2', x: 2000, y: 440, facing: -1, patrolMinX: 1950, patrolMaxX: 2150, enemyKind: 'syntaxError' },
-    // C 组：控制 + 远程组合考试。地面故障场逼走高路，高路上两只远程压制
-    { id: 'l2-c-null-1', x: 2160, y: 280, facing: -1, patrolMinX: 2120, patrolMaxX: 2280, enemyKind: 'nullPointerException' },
-    { id: 'l2-c-glitch-1', x: 2150, y: 440, facing: -1, patrolMinX: 2060, patrolMaxX: 2230, enemyKind: 'runtimeGlitch' },
-    { id: 'l2-c-glitch-2', x: 2380, y: 440, facing: -1, patrolMinX: 2330, patrolMaxX: 2480, enemyKind: 'runtimeGlitch' },
-    { id: 'l2-c-null-2', x: 2470, y: 340, facing: -1, patrolMinX: 2420, patrolMaxX: 2540, enemyKind: 'nullPointerException' },
+    // 教学区：踏上第一块 340 中台后的近战遭遇
+    { id: 'l2-t-syn-1', x: 340, y: 340, facing: -1, patrolMinX: 300, patrolMaxX: 420, enemyKind: 'syntaxError' },
+    // A 组：地面两只故障场铺场，高台两只远程压制
+    { id: 'l2-a-glitch-1', x: 520, y: 440, facing: -1, patrolMinX: 380, patrolMaxX: 680, enemyKind: 'runtimeGlitch' },
+    { id: 'l2-a-glitch-2', x: 980, y: 440, facing: -1, patrolMinX: 900, patrolMaxX: 1120, enemyKind: 'runtimeGlitch' },
+    { id: 'l2-a-null-2', x: 880, y: 260, facing: -1, patrolMinX: 800, patrolMaxX: 980, enemyKind: 'nullPointerException' },
+    { id: 'l2-a-null-1', x: 1400, y: 340, facing: -1, patrolMinX: 1320, patrolMaxX: 1480, enemyKind: 'nullPointerException' },
+    // B 组：窄门打断，地面两只近战 + 门上叠层怪 + 门后远程
+    { id: 'l2-b-syn-1', x: 1250, y: 440, facing: -1, patrolMinX: 1150, patrolMaxX: 1420, enemyKind: 'syntaxError' },
+    { id: 'l2-b-stack', x: 1940, y: 340, facing: -1, patrolMinX: 1900, patrolMaxX: 1990, enemyKind: 'stackOverflowError' },
+    { id: 'l2-b-syn-2', x: 1700, y: 440, facing: -1, patrolMinX: 1620, patrolMaxX: 1920, enemyKind: 'syntaxError' },
+    { id: 'l2-b-null-3', x: 2150, y: 340, facing: -1, patrolMinX: 2080, patrolMaxX: 2220, enemyKind: 'nullPointerException' },
+    // C 组：控制 + 远程组合
+    { id: 'l2-c-null-1', x: 1680, y: 260, facing: -1, patrolMinX: 1600, patrolMaxX: 1760, enemyKind: 'nullPointerException' },
+    { id: 'l2-c-glitch-1', x: 1900, y: 440, facing: -1, patrolMinX: 1820, patrolMaxX: 2100, enemyKind: 'runtimeGlitch' },
+    { id: 'l2-c-glitch-2', x: 2420, y: 440, facing: -1, patrolMinX: 2360, patrolMaxX: 2560, enemyKind: 'runtimeGlitch' },
+    { id: 'l2-c-null-2', x: 2540, y: 340, facing: -1, patrolMinX: 2480, patrolMaxX: 2580, enemyKind: 'nullPointerException' },
+    { id: 'l2-c-syn-3', x: 2680, y: 440, facing: -1, patrolMinX: 2620, patrolMaxX: 2780, enemyKind: 'syntaxError' },
   ] satisfies readonly EnemySpawn[],
   exit: { id: 'l2-exit', x: 2700, y: 362, w: 48, h: 78 },
 } satisfies LevelConfig;

@@ -1,3 +1,5 @@
+import { SIM } from '../config';
+
 /** 面向：-1 左，1 右 */
 export type Facing = -1 | 1;
 
@@ -51,4 +53,10 @@ export function syncHurtbox(body: CombatBody): void {
     w: body.width,
     h: body.height,
   };
+}
+
+/** 玩家/杂兵/Boss 共用的重力累积，封顶 maxFallSpeed */
+export function applyGravity(body: { velocity: { y: number } }): void {
+  body.velocity.y += SIM.gravity * SIM.fixedDt;
+  if (body.velocity.y > SIM.maxFallSpeed) body.velocity.y = SIM.maxFallSpeed;
 }

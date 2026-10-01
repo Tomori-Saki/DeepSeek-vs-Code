@@ -110,6 +110,8 @@ export interface EnemyState extends CombatBody {
   fatalFrames: number;
   /** Boss 跳台冷却（帧） */
   bossJumpCooldownFrames: number;
+  /** 死亡演出已走帧数；杂兵超过 DEATH_LINGER_FRAMES 后从模拟层移除（Boss 保留） */
+  deathFrames: number;
 }
 
 /** 杂兵与 Boss 数值表。Boss 的逻辑体型用表里的 width/height，不动 SIM。 */
@@ -181,16 +183,16 @@ const MINION_BODY = {
 
 const KIND: Record<EnemyKind, KindCombatStats> = {
   syntaxError: {
-    health: 60,
+    health: 90,
     patrolSpeed: 55,
     chaseSpeed: 110,
-    alertRange: 280,
+    alertRange: 440,
     attackRange: 52,
     damage: 10,
     startup: 18,
     active: 4,
     recovery: 26,
-    cooldown: 80,
+    cooldown: 52,
     meleeW: 64,
     meleeH: 32,
     meleeForward: 40,
@@ -209,16 +211,16 @@ const KIND: Record<EnemyKind, KindCombatStats> = {
     ...UNUSED_STACK,
   },
   nullPointerException: {
-    health: 40,
+    health: 60,
     patrolSpeed: 40,
     chaseSpeed: 70,
-    alertRange: 320,
+    alertRange: 480,
     attackRange: 240,
     damage: 8,
     startup: 16,
     active: 1,
     recovery: 12,
-    cooldown: 110,
+    cooldown: 72,
     meleeW: 0,
     meleeH: 0,
     meleeForward: 0,
@@ -236,16 +238,16 @@ const KIND: Record<EnemyKind, KindCombatStats> = {
     ...UNUSED_STACK,
   },
   stackOverflowError: {
-    health: 84,
+    health: 126,
     patrolSpeed: 38,
     chaseSpeed: 82,
-    alertRange: 220,
+    alertRange: 420,
     attackRange: 56,
     damage: 16,
     startup: 18,
     active: 4,
     recovery: 24,
-    cooldown: 84,
+    cooldown: 55,
     meleeW: 64,
     meleeH: 32,
     meleeForward: 40,
@@ -268,17 +270,17 @@ const KIND: Record<EnemyKind, KindCombatStats> = {
     ...MINION_BODY,
   },
   runtimeGlitch: {
-    health: 40,
+    health: 60,
     patrolSpeed: 70,
     chaseSpeed: 130,
-    alertRange: 220,
+    alertRange: 420,
     attackRange: 0,
     // 瞬移后的闪现斩：startup 8 / active 4 / recovery 18，伤害 8
     damage: 8,
     startup: 8,
     active: 4,
     recovery: 18,
-    cooldown: 96,
+    cooldown: 62,
     meleeW: 56,
     meleeH: 32,
     meleeForward: 34,
@@ -364,6 +366,7 @@ export function createSentinel(spawn: EnemySpawn, level: LevelConfig): EnemyStat
     hurtFrames: 0,
     invulnFrames: 0,
     flashFrames: 0,
+    deathFrames: 0,
     behavior: 'patrol',
     attackCooldownFrames: 0,
     patrolMinX: spawn.patrolMinX,
